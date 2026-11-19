@@ -393,6 +393,7 @@ with tab이월:
             d, hide_index=True, use_container_width=True, height=430,
             num_rows="fixed", key="co_ed",
             column_config={
+                "건키": None, "정규화키": None,     # 앱 내부용 — 화면에서만 가린다
                 "지급상태": st.column_config.SelectboxColumn(
                     options=["대기", "지급완료", "취소종결"]),
                 "지급월": st.column_config.TextColumn(
