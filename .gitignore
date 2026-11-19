@@ -1,0 +1,8 @@
+# 실제 금액과 거래처가 들어 있다. 저장소에 올리지 않는다.
+data/
+.streamlit/secrets.toml
+
+__pycache__/
+*.pyc
+*.xlsx
+*.xlsm

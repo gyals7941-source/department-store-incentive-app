@@ -1,0 +1,16 @@
+[theme]
+base = "light"
+primaryColor = "#1C6B45"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6F5"
+textColor = "#1F2937"
+# 한글·숫자를 한 벌로 가진 글꼴. 실제 글꼴 파일은 ui.py 의 @import 가 불러온다.
+font = "Pretendard Variable, Pretendard, Malgun Gothic, sans-serif"
+headingFont = "Pretendard Variable, Pretendard, Malgun Gothic, sans-serif"
+
+[server]
+headless = true
+maxUploadSize = 200
+
+[browser]
+gatherUsageStats = false
