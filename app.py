@@ -261,7 +261,8 @@ with tab실행:
         m[2].metric("판매월귀속 인센티브", won(share["인센티브총액"].sum()))
         m[3].metric("당월 실지급", won(share["당월지급"].sum()))
         이월지급 = engine.이월지급건(res["이월명부"], 마감월)
-        이월지급 = 이월지급[이월지급["지점"].isin(share["지점"])]
+        이월지급 = 이월지급[이월지급["지점"].isin(share["지점"])
+                        & (이월지급["확정단가"].map(engine.loose_num) > 0)]
         이월지급액 = engine.sum_num(이월지급["확정단가"]) if not 이월지급.empty else 0.0
         이번달분 = float(share["당월지급"].sum()) - 이월지급액
         if 이월지급액:
@@ -371,7 +372,9 @@ with tab이월:
         ui.section("이월명부", "미배송이라 이번 달에 못 준 수당을 추적합니다. "
                             "배송이 끝나면 자동으로 표시되고, 원장에서 취소된 건은 "
                             "자동으로 취소종결 처리됩니다.")
-        대기 = co[co["지급상태"].astype(str).str.strip() == "대기"]
+        # 예전에 올라간 0원 건은 지우지 않되, 대기 목록과 숫자에서는 뺀다.
+        대기 = co[(co["지급상태"].astype(str).str.strip() == "대기")
+                & (co["확정단가"].map(engine.loose_num) > 0)]
         완 = 대기[대기["실제배송완료"].astype(str).str.strip() != ""]
         c = st.columns(4)
         c[0].metric("전체", f"{len(co)}건")

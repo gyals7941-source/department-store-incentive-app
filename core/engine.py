@@ -449,13 +449,19 @@ def empty_carryover() -> pd.DataFrame:
 
 def register_carryover(ex: pd.DataFrame, carryover: pd.DataFrame,
                        마감월_text: str) -> tuple[pd.DataFrame, int, int]:
-    """대상추출의 '익월이월' 건을 이월명부에 누적. 건키 기준 중복 제거."""
+    """대상추출의 '익월이월' 건을 이월명부에 누적. 건키 기준 중복 제거.
+
+    수당이 0원인 건(0차 지점, 단가 0원 품목)은 올리지 않는다 — 나중에 배송돼도
+    줄 돈이 없어 추적할 것이 없다.
+    """
     if carryover is None or carryover.empty:
         carryover = empty_carryover()
     기존 = set(carryover["건키"].astype(str))
     added, skipped, new_rows = 0, 0, []
     if not ex.empty:
         for _, r in ex[ex["지급구분"] == 익월이월].iterrows():
+            if loose_num(r["인센단가"]) <= 0:
+                continue
             k = text(r["건키"])
             if k and k in 기존:
                 skipped += 1
