@@ -12,9 +12,12 @@
 
 핀이 설정돼 있지 않으면 문을 세우지 않는다(사내 PC·로컬 실행용).
 
-한 번 통과하면 그 브라우저에 8시간짜리 통행증(쿠키)을 남긴다. 새로고침하거나 탭을
+한 번 통과하면 그 브라우저의 저장소에 8시간짜리 통행증을 남긴다. 새로고침하거나 탭을
 닫았다 열어도 그동안은 다시 묻지 않는다. 통행증은 만료 시각에 핀으로 서명한 값이라
 핀을 바꾸면 전부 무효가 된다. 핀 자체는 브라우저에 남지 않는다.
+
+쿠키를 쓰지 않는 이유: Streamlit Cloud 는 브라우저 쿠키를 앱에 넘겨주지 않는다.
+그래서 작은 화면 조각(core/pass_store)이 브라우저 저장소에서 통행증을 읽어 보내 준다.
 """
 from __future__ import annotations
 
@@ -23,20 +26,20 @@ import hmac
 import os
 import time
 import unicodedata
+from pathlib import Path
 
 import streamlit as st
 
 틀린횟수 = "_출입_틀린횟수"
 잠김해제 = "_출입_잠김해제"
 통과 = "_출입_통과"
-심을것 = "_출입_심을통행증"      # 다음 화면에서 브라우저에 남길 값("" 이면 지운다)
+통행증값 = "_출입_통행증"        # 이번에 핀으로 통과해 브라우저에 남길 값
 나감 = "_출입_나감"              # 이 접속에서는 통행증을 믿지 않는다
 
 봐주는횟수 = 5          # 이 횟수까지는 그냥 다시 물어본다
 잠그는초 = 60           # 그 뒤로는 틀릴 때마다 이만큼씩 잠근다(최대 10분)
 최대잠금 = 600
 유지초 = 8 * 60 * 60     # 한 번 통과하면 이 시간 동안 다시 묻지 않는다
-쿠키이름 = "incentive_pass"
 
 
 def 핀() -> str:
@@ -81,24 +84,20 @@ def _통행증_맞나(값: str) -> bool:
     return 만료 > time.time() and hmac.compare_digest(서명, _서명(만료))
 
 
-def _브라우저_통행증() -> str:
-    try:
-        return str(st.context.cookies.get(쿠키이름, ""))
-    except Exception:                      # noqa: BLE001  쿠키를 못 읽는 환경
-        return ""
+_보관함_조각 = None
 
 
-def _심기() -> None:
-    """통과 직후(또는 나간 직후) 한 번, 브라우저에 통행증을 남기거나 지운다."""
-    if 심을것 not in st.session_state:
-        return
-    값 = st.session_state.pop(심을것)
-    수명 = 유지초 if 값 else 0
-    import streamlit.components.v1 as components
-    components.html(
-        "<script>try{window.parent.document.cookie="
-        f"'{쿠키이름}={값}; max-age={수명}; path=/; SameSite=Strict; Secure';"
-        "}catch(e){}</script>", height=0)
+def _보관함(동작: str, 값: str = ""):
+    """브라우저 저장소의 통행증을 읽거나(get) 남기거나(set) 지운다(clear).
+
+    돌려주는 값은 저장소에 있는 통행증. 화면 조각이 아직 답하기 전이면 None.
+    """
+    global _보관함_조각
+    if _보관함_조각 is None:
+        import streamlit.components.v1 as components
+        _보관함_조각 = components.declare_component(
+            "pass_store", path=str(Path(__file__).parent / "pass_store"))
+    return _보관함_조각(action=동작, value=값, key="_출입_보관함", default=None)
 
 
 def 열렸나() -> bool:
@@ -106,12 +105,14 @@ def 열렸나() -> bool:
     if not 핀():
         return True                        # 핀 미설정 — 문을 세우지 않는다
     if st.session_state.get(통과):
-        _심기()
+        if st.session_state.get(통행증값):
+            _보관함("set", st.session_state[통행증값])   # 이 브라우저에 남긴다
         return True
-    if not st.session_state.get(나감) and _통행증_맞나(_브라우저_통행증()):
-        st.session_state[통과] = True   # 8시간 안에 다시 온 브라우저
+    if st.session_state.get(나감):
+        _보관함("clear")                   # 나간 브라우저의 통행증은 지우고 믿지 않는다
+    elif _통행증_맞나(_보관함("get") or ""):
+        st.session_state[통과] = True     # 8시간 안에 다시 온 브라우저
         return True
-    _심기()                              # 나간 직후라면 브라우저의 통행증을 지운다
 
     남은 = int(st.session_state.get(잠김해제, 0) - time.time())
     st.markdown("<div style='height:8vh'></div>", unsafe_allow_html=True)
@@ -141,7 +142,7 @@ def 열렸나() -> bool:
             if _맞나(값):
                 st.session_state[통과] = True
                 st.session_state[틀린횟수] = 0
-                st.session_state[심을것] = _통행증()
+                st.session_state[통행증값] = _통행증()
                 st.session_state.pop(나감, None)
                 st.rerun()
             n = st.session_state.get(틀린횟수, 0) + 1
@@ -164,7 +165,6 @@ def 열렸나() -> bool:
 
 
 def 나가기() -> None:
-    for k in (통과, 틀린횟수, 잠김해제):
+    for k in (통과, 틀린횟수, 잠김해제, 통행증값):
         st.session_state.pop(k, None)
-    st.session_state[나감] = True
-    st.session_state[심을것] = ""       # 브라우저의 통행증도 지운다
+    st.session_state[나감] = True        # 다음 화면에서 브라우저의 통행증도 지운다

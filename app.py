@@ -76,6 +76,15 @@ def make_settings(마감월_text: str):
     return s, 적용, sd
 
 
+def 쉼표(df: pd.DataFrame, 열들) -> pd.DataFrame:
+    """보여 주기용 — 금액 칸에 천 단위 쉼표를 넣는다. 빈칸은 빈칸으로 둔다."""
+    v = df.copy()
+    for c in 열들:
+        if c in v.columns:
+            v[c] = v[c].map(lambda x: "" if str(x).strip() == "" else won(engine.loose_num(x)))
+    return v
+
+
 def 숫자(s, default: float = 0.0) -> float:
     """'1,000,000원' 처럼 적어도 숫자로 읽는다."""
     t = "".join(ch for ch in str(s) if ch.isdigit() or ch == ".")
@@ -284,13 +293,15 @@ with tab실행:
              else 대상 if 보기 == "대형안마의자 전체" else ex)
         열 = [c for c in ["지점", "주문서일자", "품목코드", "품목명", "채널", "정상가",
                         "판정", "배송", "차수", "인센단가", "지급구분"] if c in d.columns]
-        st.dataframe(d[열], hide_index=True, use_container_width=True, height=330)
+        st.dataframe(쉼표(d[열], ["정상가", "인센단가"]), hide_index=True,
+                     use_container_width=True, height=330)
 
         if not 이월지급.empty:
             ui.section("이번 달 지급되는 이월 건")
             이월열 = [c for c in ["판매월", "지점", "품목코드", "품목명", "확정차수",
                               "확정단가", "지급상태"] if c in 이월지급.columns]
-            st.dataframe(이월지급[이월열].sort_values(["판매월", "지점"]),
+            st.dataframe(쉼표(이월지급[이월열].sort_values(["판매월", "지점"]),
+                            ["확정단가"]),
                          hide_index=True, use_container_width=True)
             st.caption(f"{won(이번달분)} + {won(이월지급액)} = "
                        f"{won(share['당월지급'].sum())} 당월 실지급")
@@ -388,12 +399,14 @@ with tab이월:
                        icon="💰")
         f = st.radio("필터", ["대기만", "전체"], horizontal=True,
                      label_visibility="collapsed")
-        d = 대기 if f == "대기만" else co
+        d = (대기 if f == "대기만" else co).copy()
+        d["확정단가"] = d["확정단가"].map(engine.loose_num)    # 숫자로 바꿔 쉼표를 넣어 보여 준다
         ed = st.data_editor(
             d, hide_index=True, use_container_width=True, height=430,
             num_rows="fixed", key="co_ed",
             column_config={
                 "건키": None, "정규화키": None,     # 앱 내부용 — 화면에서만 가린다
+                "확정단가": st.column_config.NumberColumn(format="localized", step=1000),
                 "지급상태": st.column_config.SelectboxColumn(
                     options=["대기", "지급완료", "취소종결"]),
                 "지급월": st.column_config.TextColumn(
@@ -401,6 +414,9 @@ with tab이월:
             })
         if st.button("이월명부 저장", type="primary"):
             merged = co.copy()
+            ed = ed.copy()
+            ed["확정단가"] = ed["확정단가"].map(      # 장부에는 글자로 둔다
+                lambda x: "" if pd.isna(x) else f"{float(x):.0f}")
             merged.loc[ed.index, ed.columns] = ed
             storage.save_carryover(merged)
             st.success("저장했습니다.")
